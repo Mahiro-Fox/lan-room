@@ -1,0 +1,16 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dist-mock/
+src-tauri/target/
+src-tauri/gen/
+
+# 更新签名私钥，绝不能提交
+.tauri/
+
+# 杂项
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

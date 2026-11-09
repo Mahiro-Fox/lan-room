@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LanRoom",
+  "version": "0.1.0",
+  "identifier": "com.mahirofox.lanroom",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "LanRoom · 局域网通知",
+        "width": 1100,
+        "height": 740,
+        "minWidth": 960,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "backgroundColor": "#080B14",
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Mahiro Fox",
+    "copyright": "© 2026 Mahiro Fox",
+    "shortDescription": "局域网通知房间",
+    "longDescription": "在局域网内创建或加入房间，一键让房间里所有人收到 Windows 通知。",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2QzA3MzQ4MzAyQzJBOTMKUldTVEtpd3dTSFBBRmtBQUl5V1R0SE9tbFlkbzVwalZqTTVwaWhUbENFRnI3RWw1ME5rS0Q5QlIK",
+      "endpoints": [
+        "https://github.com/Mahiro-Fox/lan-room/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
