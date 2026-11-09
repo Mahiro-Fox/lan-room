@@ -83,7 +83,7 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="你的密码"
 npm run app:build
 ```
 
-产物位于 `src-tauri/target/release/bundle/nsis/`：`LanRoom_0.1.0_x64-setup.exe`（安装包）
+产物位于 `src-tauri/target/release/bundle/nsis/`：`LanRoom_0.1.1_x64-setup.exe`（安装包）
 与 `.sig`（自动更新签名）。本地手动发布时再执行一次：
 
 ```bash

@@ -1,6 +1,6 @@
 [package]
 name = "lan-room"
-version = "0.1.0"
+version = "0.1.1"
 description = "LanRoom - 局域网通知房间"
 authors = ["Mahiro Fox"]
 edition = "2021"
