@@ -1,7 +1,7 @@
 {
   "name": "lan-room",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",
-    "app:build": "tauri build"
+    "app:build": "tauri build",
+    "bump": "node scripts/bump-version.mjs",
+    "latest-json": "node scripts/make-latest-json.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.0",

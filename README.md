@@ -98,14 +98,23 @@ node scripts/make-latest-json.mjs   # 生成 latest.json
 自动更新端点已配置为
 `https://github.com/Mahiro-Fox/lan-room/releases/latest/download/latest.json`。
 
-1. 修改 `src-tauri/tauri.conf.json` 的 `version`，并同步 `package.json`
+1. 升版本号（自动改好 `tauri.conf.json`、`package.json`、`Cargo.toml` 与两个 lock 文件的根版本）：
+
+   ```bash
+   npm run bump 0.1.2                 # 也可用 npm run bump patch / minor / major
+   npm run bump 0.1.2 -- --dry-run    # 只看会改哪些文件
+   ```
+
+   > 不要用全局搜索替换版本号：`Cargo.lock` 里 `byteorder-lite`、`vswhom` 等依赖也是
+   > `0.1.x`，被一起改掉会直接导致项目编译失败。
 2. 在仓库 Settings → Secrets and variables → Actions 添加：
    - `TAURI_SIGNING_PRIVATE_KEY`：`.tauri/lanroom.key` 的完整内容
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：生成密钥时设置的密码
 3. 提交并打 tag：
 
 ```bash
-git tag v0.1.1 && git push origin v0.1.1
+git commit -am "chore: bump to 0.1.2"
+git tag v0.1.2 && git push origin main --tags
 ```
 
 GitHub Actions 会构建、签名并创建 Release，同时上传 `latest.json`。已安装的旧版本在

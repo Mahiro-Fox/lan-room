@@ -1,6 +1,6 @@
 // 生成本地发布用的 latest.json（CI 由 tauri-action 自动生成，本地打包时用它补齐）
 // 用法：node scripts/make-latest-json.mjs [tag]
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -15,10 +15,20 @@ if (!existsSync(dir)) {
   process.exit(1);
 }
 
-const setup = readdirSync(dir).find((f) => f.endsWith("-setup.exe"));
-if (!setup) {
+// 优先挑与当前版本号匹配的安装包，避免打包目录里残留旧版本时取错文件
+const setups = readdirSync(dir).filter((f) => f.endsWith("-setup.exe"));
+if (setups.length === 0) {
   console.error("没有找到 NSIS 安装包");
   process.exit(1);
+}
+const exact = `LanRoom_${version}_x64-setup.exe`;
+const setup = setups.includes(exact)
+  ? exact
+  : setups
+      .map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t)[0].f;
+if (setup !== exact) {
+  console.warn(`注意：未找到 ${exact}，改用最新的 ${setup}`);
 }
 const sigPath = join(dir, `${setup}.sig`);
 if (!existsSync(sigPath)) {

@@ -27,6 +27,14 @@ export default function App() {
     setNotice({ kind, text, id: Date.now() });
   }, []);
 
+  /**
+   * 快照可能从多条路径到达（心跳线程的事件、命令返回值、启动时的 bootstrap），
+   * 到达顺序不保证，因此只接受版本号更新的那一份，避免旧状态覆盖新状态。
+   */
+  const applySnap = useCallback((next: Snapshot) => {
+    setSnap((prev) => (prev && next.rev <= prev.rev ? prev : next));
+  }, []);
+
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(null), 4000);
@@ -39,10 +47,10 @@ export default function App() {
 
     api
       .bootstrap()
-      .then((s) => !disposed && setSnap(s))
+      .then((s) => !disposed && applySnap(s))
       .catch((e) => !disposed && setFatal(String(e)));
 
-    subs.push(on<Snapshot>("snapshot", (p) => setSnap(p)));
+    subs.push(on<Snapshot>("snapshot", applySnap));
     subs.push(on<string>("notice", (p) => notify("info", p)));
     subs.push(
       on<string>("toast-error", (p) => notify("error", `系统通知没有弹出来：${p}`)),
@@ -55,26 +63,26 @@ export default function App() {
       disposed = true;
       subs.forEach((p) => void p.then((un) => un()).catch(() => undefined));
     };
-  }, [notify]);
+  }, [notify, applySnap]);
 
   const run = useCallback(
     async (fn: () => Promise<Snapshot>) => {
       try {
-        setSnap(await fn());
+        applySnap(await fn());
       } catch (e) {
         notify("error", String(e));
       }
     },
-    [notify],
+    [notify, applySnap],
   );
 
   const saveSettings = useCallback(
     async (next: Settings) => {
       const s = await api.saveSettings(next);
-      setSnap(s);
+      applySnap(s);
       notify("success", "设置已保存");
     },
-    [notify],
+    [notify, applySnap],
   );
 
   const checkUpdate = useCallback(async () => {
@@ -123,7 +131,7 @@ export default function App() {
       onSubmit={async (nick) => {
         try {
           const s = await api.saveSettings({ ...snap.settings, nickname: nick });
-          setSnap(s);
+          applySnap(s);
         } catch (e) {
           notify("error", String(e));
         }

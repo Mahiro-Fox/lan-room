@@ -99,9 +99,10 @@ export const mock = {
       rooms,
       members: inRoom ? members : [],
       log: inRoom ? log : [],
-      version: "0.1.1",
+      version: "0.1.2",
       port: 47932,
       sendableAt: sendableAt > Date.now() ? sendableAt : 0,
+      rev: Math.floor(Date.now() / 100),
     };
   },
   send(): Snapshot {

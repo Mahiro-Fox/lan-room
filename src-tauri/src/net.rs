@@ -132,6 +132,8 @@ struct Inner {
     /// 已处理过的通知 mid，用于过滤重复到达的广播包
     seen_notify: HashSet<String>,
     notify_order: VecDeque<String>,
+    /// 快照版本号：每次生成快照时自增，前端据此丢弃过期的快照
+    rev: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -171,6 +173,8 @@ pub struct AppSnapshot {
     pub port: u16,
     /// 冷却结束的墙钟毫秒时间戳；0 表示现在就能发
     pub sendable_at: u64,
+    /// 快照版本号：数值越大表示状态越新，前端用它丢弃乱序到达的旧快照
+    pub rev: u64,
 }
 
 pub struct Net {
@@ -211,6 +215,7 @@ impl Net {
                 sendable_at: 0,
                 seen_notify: HashSet::new(),
                 notify_order: VecDeque::new(),
+                rev: 1,
             }),
             last_emit: Mutex::new(String::new()),
             force_beat: AtomicU32::new(0),
@@ -341,9 +346,11 @@ impl Net {
                     return;
                 }
 
-                // 同一份通知可能经全网广播 + 子网广播两条路径到达，按 mid 去重
+                // 去重与落库放在同一把锁里：日志顺序 = 到达顺序，时间戳也在到达瞬间取
+                let arrived = now_ms();
                 {
                     let mut inner = lock(&self.inner);
+                    // 同一份通知可能经全网广播 + 子网广播两条路径到达，按 mid 去重
                     if !inner.seen_notify.insert(mid.clone()) {
                         return;
                     }
@@ -353,25 +360,21 @@ impl Net {
                             inner.seen_notify.remove(&old);
                         }
                     }
-                }
-
-                trace!("收到通知 ← {}: {} / {}", nick, title, body);
-                crate::toast::show(&self.app, &title, &body);
-
-                {
-                    let mut inner = lock(&self.inner);
                     inner.log.push_front(LogEntry {
                         id: mid.clone(),
                         kind: "received".into(),
                         nick: nick.clone(),
-                        title,
-                        body,
-                        ts: now_ms(),
+                        title: title.clone(),
+                        body: body.clone(),
+                        ts: arrived,
                         acks: Vec::new(),
                         total,
                     });
                     inner.log.truncate(MAX_LOG);
                 }
+
+                trace!("收到通知 ← {}: {} / {}", nick, title, body);
+                crate::toast::show(&self.app, &title, &body);
 
                 // 回执单播给发送方，避免全房间广播
                 self.unicast(
@@ -732,7 +735,10 @@ impl Net {
 
     pub fn snapshot(&self) -> AppSnapshot {
         let settings = lock(&self.settings).clone();
-        let inner = lock(&self.inner);
+        let mut inner = lock(&self.inner);
+        // 版本号与状态读取在同一把锁内完成，因此 rev 的大小关系就等于状态的新旧关系
+        inner.rev += 1;
+        let rev = inner.rev;
         let me_room = inner.me.room.clone();
         // 冷却结束后归零，界面据此恢复按钮
         let sendable_at = if now_ms() < inner.sendable_at {
@@ -796,20 +802,24 @@ impl Net {
             version: env!("CARGO_PKG_VERSION").to_string(),
             port: PORT,
             sendable_at,
+            rev,
         }
     }
 
     fn emit_if_changed(&self) {
         let snap = self.snapshot();
-        let Ok(json) = serde_json::to_string(&snap) else {
+        // rev 每次取快照都会变，不参与「内容有没有变化」的判定
+        let mut probe = snap.clone();
+        probe.rev = 0;
+        let Ok(key) = serde_json::to_string(&probe) else {
             return;
         };
         {
             let mut last = lock(&self.last_emit);
-            if *last == json {
+            if *last == key {
                 return;
             }
-            *last = json;
+            *last = key;
         }
         let _ = self.app.emit("snapshot", &snap);
     }

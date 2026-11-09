@@ -50,6 +50,8 @@ export interface Snapshot {
   port: number;
   /** 冷却结束的墙钟毫秒时间戳；0 表示当前可发送 */
   sendableAt: number;
+  /** 快照版本号，越大越新；用于丢弃乱序到达的旧快照 */
+  rev: number;
 }
 
 export interface UpdateInfo {
