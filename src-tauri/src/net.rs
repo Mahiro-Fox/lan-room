@@ -24,6 +24,8 @@ const TICK: Duration = Duration::from_millis(200);
 const BEAT: Duration = Duration::from_millis(2000);
 const TTL: Duration = Duration::from_millis(7000);
 const RECEIPT_DELAY: Duration = Duration::from_millis(900);
+/// 两次发送之间的最小间隔：按钮和全局快捷键共用同一把闸门，防止误触/连按刷屏
+pub const SEND_GAP: Duration = Duration::from_millis(3000);
 const MAX_LOG: usize = 80;
 const PROTOCOL: u8 = 1;
 
@@ -123,6 +125,13 @@ struct Inner {
     log: VecDeque<LogEntry>,
     receipt_fired: HashSet<String>,
     pending_receipts: Vec<(String, Instant)>,
+    /// 上一次成功发送的单调时间，用于 3 秒冷却
+    last_sent: Option<Instant>,
+    /// 冷却结束的墙钟时间（毫秒），下发给界面做倒计时
+    sendable_at: u64,
+    /// 已处理过的通知 mid，用于过滤重复到达的广播包
+    seen_notify: HashSet<String>,
+    notify_order: VecDeque<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -160,6 +169,8 @@ pub struct AppSnapshot {
     pub log: Vec<LogEntry>,
     pub version: String,
     pub port: u16,
+    /// 冷却结束的墙钟毫秒时间戳；0 表示现在就能发
+    pub sendable_at: u64,
 }
 
 pub struct Net {
@@ -196,6 +207,10 @@ impl Net {
                 log: VecDeque::new(),
                 receipt_fired: HashSet::new(),
                 pending_receipts: Vec::new(),
+                last_sent: None,
+                sendable_at: 0,
+                seen_notify: HashSet::new(),
+                notify_order: VecDeque::new(),
             }),
             last_emit: Mutex::new(String::new()),
             force_beat: AtomicU32::new(0),
@@ -324,6 +339,20 @@ impl Net {
                 };
                 if !in_room {
                     return;
+                }
+
+                // 同一份通知可能经全网广播 + 子网广播两条路径到达，按 mid 去重
+                {
+                    let mut inner = lock(&self.inner);
+                    if !inner.seen_notify.insert(mid.clone()) {
+                        return;
+                    }
+                    inner.notify_order.push_back(mid.clone());
+                    while inner.notify_order.len() > 200 {
+                        if let Some(old) = inner.notify_order.pop_front() {
+                            inner.seen_notify.remove(&old);
+                        }
+                    }
                 }
 
                 trace!("收到通知 ← {}: {} / {}", nick, title, body);
@@ -621,8 +650,20 @@ impl Net {
     pub fn send(&self, custom: Option<String>) -> Result<(), String> {
         let s = lock(&self.settings).clone();
         let (rid, nick, room_name, total) = {
-            let inner = lock(&self.inner);
+            let mut inner = lock(&self.inner);
             let rid = inner.me.room.clone().ok_or("请先进入一个房间")?;
+            // 冷却闸门与「占用」放在同一把锁里，避免连点并发绕过
+            if let Some(last) = inner.last_sent {
+                let elapsed = last.elapsed();
+                if elapsed < SEND_GAP {
+                    let wait = SEND_GAP - elapsed;
+                    let secs = (wait.as_millis() as u64 + 999) / 1000;
+                    return Err(format!("刚发过一条，约 {secs} 秒后才能再发"));
+                }
+            }
+            inner.last_sent = Some(Instant::now());
+            inner.sendable_at = now_ms() + SEND_GAP.as_millis() as u64;
+
             let nick = if s.nickname.is_empty() {
                 inner.me.nick.clone()
             } else {
@@ -693,6 +734,12 @@ impl Net {
         let settings = lock(&self.settings).clone();
         let inner = lock(&self.inner);
         let me_room = inner.me.room.clone();
+        // 冷却结束后归零，界面据此恢复按钮
+        let sendable_at = if now_ms() < inner.sendable_at {
+            inner.sendable_at
+        } else {
+            0
+        };
 
         let mut rooms: Vec<RoomView> = inner
             .rooms
@@ -748,6 +795,7 @@ impl Net {
             log: inner.log.iter().cloned().collect(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             port: PORT,
+            sendable_at,
         }
     }
 

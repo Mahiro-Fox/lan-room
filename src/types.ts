@@ -48,6 +48,8 @@ export interface Snapshot {
   log: LogEntry[];
   version: string;
   port: number;
+  /** 冷却结束的墙钟毫秒时间戳；0 表示当前可发送 */
+  sendableAt: number;
 }
 
 export interface UpdateInfo {

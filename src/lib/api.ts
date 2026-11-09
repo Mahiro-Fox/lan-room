@@ -17,7 +17,7 @@ export const api = {
   leaveRoom: () => (MOCK ? Promise.resolve(mock.snapshot()) : invoke<Snapshot>("leave_room")),
   send: (body?: string) =>
     MOCK
-      ? Promise.resolve(mock.snapshot())
+      ? Promise.resolve(mock.send())
       : invoke<Snapshot>("send_notification", { body: body && body.trim() ? body : null }),
   testNotification: () => (MOCK ? Promise.resolve() : invoke<void>("test_notification")),
   hideWindow: () => (MOCK ? Promise.resolve() : invoke<void>("hide_window")),

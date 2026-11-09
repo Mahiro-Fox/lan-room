@@ -2,6 +2,8 @@
 import type { LogEntry, Member, Room, Settings, Snapshot } from "../types";
 
 const now = Date.now();
+/** 预览用的发送冷却时间戳 */
+let sendableAt = 0;
 
 const settings: Settings = {
   nickname: "Mahiro",
@@ -99,6 +101,11 @@ export const mock = {
       log: inRoom ? log : [],
       version: "0.1.0",
       port: 47932,
+      sendableAt: sendableAt > Date.now() ? sendableAt : 0,
     };
+  },
+  send(): Snapshot {
+    sendableAt = Date.now() + 3000;
+    return mock.snapshot();
   },
 };

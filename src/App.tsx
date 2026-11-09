@@ -168,14 +168,14 @@ export default function App() {
         <div className="flex items-center gap-2">
           {update && (
             <button
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/[0.08] px-2.5 text-[11px] text-accent transition hover:bg-accent/[0.14]"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/8 px-2.5 text-[11px] text-accent transition hover:bg-accent/[0.14]"
               onClick={() => setSettingsOpen(true)}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-accent" />
               新版本 v{update.version}
             </button>
           )}
-          <div className="flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-2.5">
+          <div className="flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/3 px-2.5">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
                 snap.roomId ? "bg-accent-3" : "bg-mist-500"
@@ -186,7 +186,7 @@ export default function App() {
             </span>
           </div>
           <button
-            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-mist-400 transition hover:border-white/15 hover:text-mist-50"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.07] bg-white/3 text-mist-400 transition hover:border-white/15 hover:text-mist-50"
             onClick={() => setSettingsOpen(true)}
             aria-label="设置"
           >
@@ -222,7 +222,7 @@ export default function App() {
       )}
 
       {notice && (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] -translate-x-1/2">
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-60 -translate-x-1/2">
           <div
             className={`animate-in flex items-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] shadow-2xl backdrop-blur-xl ${
               notice.kind === "error"

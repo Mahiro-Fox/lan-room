@@ -67,14 +67,14 @@
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl;
+    @apply rounded-2xl border border-white/8 bg-white/3 backdrop-blur-xl;
   }
   .btn {
     @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium
       transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-primary {
-    @apply bg-gradient-to-b from-[#5bd8ff] to-[#3fa9e0] text-[#04131b] shadow-[0_10px_34px_-12px_rgba(91,216,255,0.75)]
+    @apply bg-linear-to-b from-accent to-[#3fa9e0] text-[#04131b] shadow-[0_10px_34px_-12px_rgba(91,216,255,0.75)]
       hover:brightness-110 active:scale-[0.985];
   }
   .btn-ghost {
@@ -92,7 +92,7 @@
   }
   .kbd {
     @apply inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-white/12
-      bg-white/[0.06] px-1.5 font-mono text-[11px] text-mist-200;
+      bg-white/6 px-1.5 font-mono text-[11px] text-mist-200;
   }
 }
 

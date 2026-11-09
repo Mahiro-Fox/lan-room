@@ -11,7 +11,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
   }
   const sent = entry.kind === "sent";
   return (
-    <div className="animate-float-up flex gap-3 rounded-xl p-2 transition hover:bg-white/[0.03]">
+    <div className="animate-float-up flex gap-3 rounded-xl p-2 transition hover:bg-white/3">
       <div className="mt-0.5">
         {sent ? (
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent/12 text-accent">
@@ -53,7 +53,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
               className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
                 entry.acks.length > 0
                   ? "bg-accent-3/12 text-accent-3"
-                  : "bg-white/[0.06] text-mist-500"
+                  : "bg-white/6 text-mist-500"
               }`}
             >
               {entry.acks.length > 0
@@ -88,7 +88,23 @@ export function RoomView({
   const [pulse, setPulse] = useState(0);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const timer = useRef<number | null>(null);
+
+  // 3 秒发送冷却（由后端统一裁定，前端只负责呈现倒计时）
+  const remain = Math.max(0, snap.sendableAt - now);
+  const cooling = remain > 0;
+  const cooldownTotal = 3000;
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, [snap.sendableAt]);
+
+  useEffect(() => {
+    if (!cooling) return;
+    const id = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(id);
+  }, [cooling, snap.sendableAt]);
 
   useEffect(() => {
     return () => {
@@ -97,7 +113,7 @@ export function RoomView({
   }, []);
 
   const fire = async () => {
-    if (busy) return;
+    if (busy || Date.now() < snap.sendableAt) return;
     setBusy(true);
     try {
       await onSend(showCustom && custom.trim() ? custom : undefined);
@@ -113,6 +129,7 @@ export function RoomView({
 
   const others = snap.members.filter((m) => !m.isMe).length;
   const tokens = shortcutTokens(snap.settings.shortcut);
+  const ring = 2 * Math.PI * 72;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
@@ -156,10 +173,42 @@ export function RoomView({
             />
             <div className="relative flex items-center gap-6">
               <div className="relative shrink-0">
+                {cooling && (
+                  <svg
+                    className="pointer-events-none absolute -inset-2.5 -rotate-90"
+                    viewBox="0 0 156 156"
+                    width={156}
+                    height={156}
+                    aria-hidden
+                  >
+                    <circle
+                      cx={78}
+                      cy={78}
+                      r={72}
+                      fill="none"
+                      stroke="rgba(255,255,255,0.08)"
+                      strokeWidth={3}
+                    />
+                    <circle
+                      cx={78}
+                      cy={78}
+                      r={72}
+                      fill="none"
+                      stroke="#5BD8FF"
+                      strokeWidth={3}
+                      strokeLinecap="round"
+                      strokeDasharray={`${ring * (remain / cooldownTotal)} ${ring}`}
+                      style={{ opacity: 0.85 }}
+                    />
+                  </svg>
+                )}
                 <button
                   onClick={() => void fire()}
-                  disabled={busy}
-                  className="group relative grid h-[136px] w-[136px] place-items-center rounded-full transition-transform duration-150 active:scale-95 disabled:opacity-60"
+                  disabled={busy || cooling}
+                  aria-label={cooling ? "发送冷却中" : "发送通知"}
+                  className={`group relative grid h-34 w-34 place-items-center rounded-full transition duration-150 active:scale-95 disabled:active:scale-100 ${
+                    busy ? "opacity-60" : cooling ? "brightness-[0.88] saturate-[0.7]" : ""
+                  }`}
                   style={{
                     background:
                       "radial-gradient(circle at 50% 30%, #7CE6FF 0%, #4FC8F2 42%, #2F86C9 100%)",
@@ -173,23 +222,36 @@ export function RoomView({
                     style={{ opacity: pulse === 0 ? 0 : 1 }}
                   />
                   <span className="flex flex-col items-center gap-1.5 text-[#04222f]">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M3.6 11.1 20 4.2l-6.9 16.4-2.4-6.4-7.1-3.1z"
-                        fill="currentColor"
-                        fillOpacity="0.95"
-                      />
-                      <path
-                        d="m10.7 14.2 9.3-10-11.5 6.2"
-                        stroke="#04222f"
-                        strokeOpacity="0.35"
-                        strokeWidth="1.1"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <span className="text-[13px] font-semibold tracking-wide">
-                      {busy ? "发送中" : "发送通知"}
-                    </span>
+                    {cooling ? (
+                      <>
+                        <span className="font-mono text-[30px] leading-none font-semibold tabular-nums tracking-tight">
+                          {(remain / 1000).toFixed(1)}
+                        </span>
+                        <span className="text-[12px] font-medium tracking-wide opacity-80">
+                          秒后可发送
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M3.6 11.1 20 4.2l-6.9 16.4-2.4-6.4-7.1-3.1z"
+                            fill="currentColor"
+                            fillOpacity="0.95"
+                          />
+                          <path
+                            d="m10.7 14.2 9.3-10-11.5 6.2"
+                            stroke="#04222f"
+                            strokeOpacity="0.35"
+                            strokeWidth="1.1"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="text-[13px] font-semibold tracking-wide">
+                          {busy ? "发送中" : "发送通知"}
+                        </span>
+                      </>
+                    )}
                   </span>
                 </button>
               </div>
@@ -197,6 +259,9 @@ export function RoomView({
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-mist-200">
                   点一下，整个房间都会收到 Windows 通知
+                </p>
+                <p className="mt-1 text-[11px] text-mist-500">
+                  每 3 秒最多发送一条，快捷键同样受限
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="text-[11px] text-mist-500">全局快捷键</span>
@@ -218,7 +283,7 @@ export function RoomView({
                 {showCustom && (
                   <div className="animate-in mt-2">
                     <textarea
-                      className="input h-[62px] resize-none py-2 leading-relaxed"
+                      className="input h-15.5 resize-none py-2 leading-relaxed"
                       placeholder="留空则使用设置里的默认内容"
                       maxLength={200}
                       value={custom}
@@ -263,7 +328,7 @@ export function RoomView({
             {snap.members.map((m) => (
               <div
                 key={m.cid}
-                className="flex items-center gap-2.5 rounded-xl px-1.5 py-2 transition hover:bg-white/[0.03]"
+                className="flex items-center gap-2.5 rounded-xl px-1.5 py-2 transition hover:bg-white/3"
               >
                 <Avatar nick={m.nick} size={30} />
                 <div className="min-w-0 flex-1">
@@ -287,7 +352,7 @@ export function RoomView({
               </p>
             )}
           </div>
-          <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5">
+          <div className="mt-3 rounded-xl border border-white/6 bg-white/2 p-2.5">
             <p className="text-[10px] leading-relaxed text-mist-500">
               回执
               {snap.settings.sendReceipt ? "已开启" : "已关闭"}：对方收到通知后会回传一条确认，
