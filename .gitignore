@@ -14,3 +14,4 @@ src-tauri/gen/
 Thumbs.db
 .vscode/
 .idea/
+.workbuddy/
