@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -90,6 +90,8 @@ pub struct Peer {
     pub nick: String,
     pub joined: u64,
     pub seen: Instant,
+    /// 对方的收包地址（端口固定为 PORT），用于通知的单播直投
+    pub addr: SocketAddr,
 }
 
 pub struct Room {
@@ -222,13 +224,39 @@ impl Net {
         }))
     }
 
-    /// 后台循环：收包、心跳、过期清理、回执弹窗
+    /// 后台循环：收包线程 + 维护线程
+    ///
+    /// 收包必须独立成阻塞线程：早先的写法是「recv_from 80ms 超时 + sleep 200ms」轮询，
+    /// 空闲时循环周期约 280ms，通知平均要多等 ~90ms、最坏 ~280ms 才被读出来。
     pub fn spawn(self: &Arc<Self>) {
+        let recv = Arc::clone(self);
+        thread::spawn(move || {
+            let mut buf = [0u8; 2048];
+            loop {
+                match recv.sock.recv_from(&mut buf) {
+                    Ok((n, src)) => {
+                        if let Ok(pkt) = serde_json::from_slice::<Packet>(&buf[..n]) {
+                            recv.handle(pkt, src);
+                        }
+                    }
+                    Err(e) => {
+                        // 超时不会出现（无读超时）；Windows 收到 ICMP 端口不可达时
+                        // 可能给 UDP socket 报 ConnectionReset，忽略后继续收即可
+                        if e.kind() != std::io::ErrorKind::WouldBlock
+                            && e.kind() != std::io::ErrorKind::TimedOut
+                        {
+                            trace!("收包出错: {e}");
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                    }
+                }
+            }
+        });
+
         let net = Arc::clone(self);
         thread::spawn(move || {
             let mut last_beat = Instant::now() - BEAT;
             loop {
-                net.pump();
                 net.beat_if_due(&mut last_beat);
                 net.sweep();
                 net.flush_receipts();
@@ -253,11 +281,15 @@ impl Net {
         let Ok(buf) = serde_json::to_vec(pkt) else {
             return;
         };
+        self.broadcast_buf(&buf);
+    }
+
+    fn broadcast_buf(&self, buf: &[u8]) {
         if buf.len() > 1200 {
             return;
         }
         for addr in self.targets() {
-            let _ = self.sock.send_to(&buf, addr);
+            let _ = self.sock.send_to(buf, addr);
         }
     }
 
@@ -267,18 +299,38 @@ impl Net {
         }
     }
 
-    fn pump(&self) {
-        let mut buf = [0u8; 2048];
-        for _ in 0..64 {
-            match self.sock.recv_from(&mut buf) {
-                Ok((n, src)) => {
-                    if let Ok(pkt) = serde_json::from_slice::<Packet>(&buf[..n]) {
-                        self.handle(pkt, src);
-                    }
-                }
-                Err(_) => break,
-            }
+    /// 房间里其他成员的收包地址。
+    /// 同机多实例（SO_REUSEADDR 共享端口）时单播会落到另一个 socket 上，所以同机成员只走广播。
+    fn peer_addrs(&self, rid: &str) -> Vec<SocketAddr> {
+        let inner = lock(&self.inner);
+        let Some(room) = inner.rooms.get(rid) else {
+            return Vec::new();
+        };
+        room.peers
+            .iter()
+            .filter(|(cid, _)| **cid != self.cid)
+            .filter(|(_, p)| match (self.local_ip, p.addr.ip()) {
+                (Some(me), IpAddr::V4(ip)) => me != ip,
+                _ => true,
+            })
+            .map(|(_, p)| p.addr)
+            .collect()
+    }
+
+    /// 通知投递：先对已知成员逐个单播，再广播兜底。
+    /// 单播帧不会被 AP 攒到 DTIM 才下发，能绕开企业 WiFi 上「广播/多播被节流」造成的
+    /// 100~300ms 延迟；重复到达的包由 mid 去重。
+    fn deliver(&self, pkt: &Packet, rid: &str) {
+        let Ok(buf) = serde_json::to_vec(pkt) else {
+            return;
+        };
+        if buf.len() > 1200 {
+            return;
         }
+        for addr in self.peer_addrs(rid) {
+            let _ = self.sock.send_to(&buf, addr);
+        }
+        self.broadcast_buf(&buf);
     }
 
     fn handle(&self, pkt: Packet, src: SocketAddr) {
@@ -315,6 +367,7 @@ impl Net {
                         nick: nick.clone(),
                         joined,
                         seen: Instant::now(),
+                        addr: SocketAddr::new(src.ip(), PORT),
                     },
                 );
                 if is_new_peer {
@@ -496,6 +549,8 @@ impl Net {
                         nick: nick.clone(),
                         joined,
                         seen: Instant::now(),
+                        // 自己那条记录不会被单播使用（peer_addrs 里排除了本机 cid）
+                        addr: SocketAddr::from((Ipv4Addr::LOCALHOST, PORT)),
                     },
                 );
                 (room.name.clone(), room.created)
@@ -703,7 +758,8 @@ impl Net {
         }
 
         trace!("广播通知 → 房间 {rid}，预计 {total} 人：{title} / {body}");
-        self.broadcast(&Packet::Notify {
+        let rid_for_deliver = rid.clone();
+        let pkt = Packet::Notify {
             v: PROTOCOL,
             mid,
             rid,
@@ -712,7 +768,8 @@ impl Net {
             title,
             body,
             total,
-        });
+        };
+        self.deliver(&pkt, &rid_for_deliver);
         Ok(())
     }
 
@@ -843,9 +900,7 @@ fn bind_socket() -> Result<UdpSocket, String> {
     socket
         .bind(&SocketAddr::from((Ipv4Addr::UNSPECIFIED, PORT)).into())
         .map_err(|e| format!("监听 UDP {PORT} 端口失败：{e}"))?;
-    socket
-        .set_read_timeout(Some(Duration::from_millis(80)))
-        .map_err(|e| format!("设置读取超时失败：{e}"))?;
+    // 不设读超时：收包线程一直阻塞在 recv_from 上，包到达立刻处理（设了超时就退化成轮询）
     Ok(socket.into())
 }
 
