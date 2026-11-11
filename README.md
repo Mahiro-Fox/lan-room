@@ -65,13 +65,12 @@ python -m http.server 4173 --directory dist-mock
 
 ### Windows 编译环境
 
-Tauri 在 Windows 上默认需要 MSVC 工具链。**如果机器上没装 Visual Studio，可以用 GNU
-工具链替代**（本仓库自带 `src-tauri/.cargo/config.toml` 指定 `gcc` 为链接器）：
+Rust 侧固定用 MSVC：`stable-x86_64-pc-windows-msvc`（rustup 在 Windows 上的默认目标），
+链接器来自 Visual Studio Build Tools（安装时勾选「使用 C++ 的桌面开发」）。
 
-```bash
-rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
-# 需要一份 mingw-w64 的 gcc 在 PATH 中（如 winlibs 便携版）
-RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu npm run app:build
+```powershell
+rustup default stable-x86_64-pc-windows-msvc   # 通常已是默认值
+npm run app:build
 ```
 
 ## 构建安装包
